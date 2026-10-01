@@ -262,59 +262,374 @@ void MainPanel::buildCompare() {
 void MainPanel::buildRecord() {
     auto& rec = InputRecorder::get();
     auto& eng = Engine::get();
-    float W = m_size.width, H = m_size.height;
-    label("RECORD RUN", {W / 2, H - 16}, 0.5f);
+
+    float W = m_size.width;
+    float H = m_size.height;
+
+    label("RECORD RUN", {W / 2, H - 18}, 0.52f);
+
     auto menu = newMenu(m_content);
-    m_recLabel = label("", {W / 2, H - 44}, 0.34f);
-    m_status = label(m_toast, {W / 2, H - 60}, 0.28f);
-    m_progress = label("", {W / 2, H - 74}, 0.3f);
-    float bw = (W - 30) / 3.f;
-    float y1 = H - 108, y2 = H - 148;
-    button(menu, rec.recording() ? "STOP REC" : "RECORD", {15 + bw * 0.5f, y1}, bw - 6, [this] {
-        std::string err;
-        if (InputRecorder::get().recording()) { Engine::get().stopRecording(); toast("recording stopped"); }
-        else if (Engine::get().startRecording(err)) toast("RECORD ARMED: resume and start the macro; level resets are preserved");
-        else toast(err);
-        go(Page::Record);
-    }, rec.recording());
-    button(menu, "ANALYZE", {15 + bw * 1.5f, y1}, bw - 6, [this] {
-        std::string err;
-        if (!Engine::get().startAnalysis(err)) toast(err); else toast("analysis started");
-    });
-    button(menu, "PLAYBACK", {15 + bw * 2.5f, y1}, bw - 6, [this] {
-        std::string err;
-        if (!Engine::get().playbackStart(err)) toast(err); else toast("playback started - resume the game");
-    });
-    float b4 = (W - 30) / 4.f;
-    button(menu, "PAUSE PB", {15 + b4 * 0.5f, y2}, b4 - 6, [] { Engine::get().playbackPause(); });
-    button(menu, "STOP PB", {15 + b4 * 1.5f, y2}, b4 - 6, [] { Engine::get().playbackStop(); });
-    button(menu, "SAVE", {15 + b4 * 2.5f, y2}, b4 - 6, [this] {
-        std::string name, err;
-        if (Engine::get().saveRun(name, err)) toast("saved " + name); else toast(err);
-    });
-    button(menu, "CLEAR", {15 + b4 * 3.5f, y2}, b4 - 6, [this] { InputRecorder::get().clearRun(); toast("recording cleared"); go(Page::Record); });
-    // saved runs
-    auto saved = eng.storage().list();
-    if (m_savedIdx >= static_cast<int>(saved.size())) m_savedIdx = 0;
-    if (saved.empty()) label("No saved runs.", {W / 2, 66}, 0.3f)->setOpacity(130);
-    else {
-        auto const& s = saved[static_cast<size_t>(m_savedIdx)];
-        label(std::to_string(m_savedIdx + 1) + "/" + std::to_string(saved.size()) + "  lvl " + std::to_string(s.levelID) + "  " +
-              std::to_string(s.presses) + " inputs  " + std::to_string(s.durationTicks) + " ticks", {W / 2, 76}, 0.3f);
-        std::string fn = s.fileName;
-        button(menu, "<", {40, 50}, 44, [this, n = saved.size()] { m_savedIdx = (m_savedIdx + static_cast<int>(n) - 1) % static_cast<int>(n); go(Page::Record); }, false, 26.f);
-        button(menu, ">", {90, 50}, 44, [this, n = saved.size()] { m_savedIdx = (m_savedIdx + 1) % static_cast<int>(n); go(Page::Record); }, false, 26.f);
-        button(menu, "LOAD", {W / 2 - 40, 50}, 70, [this, fn] {
-            RecordedRun r; std::string err;
-            if (Engine::get().storage().load(fn, r, err)) { InputRecorder::get().setRun(std::move(r)); toast("loaded " + fn); }
-            else toast("cannot load: " + err);
-            go(Page::Record);
-        }, false, 26.f);
-        button(menu, "DELETE", {W / 2 + 40, 50}, 70, [this, fn] {
-            std::string err; Engine::get().storage().remove(fn, err); toast(err.empty() ? "deleted" : err); go(Page::Record);
-        }, false, 26.f);
+
+    std::string state;
+
+    if (rec.recording()) {
+        state = "REC ARMED - LEAVE PAUSE AND START MACRO";
     }
-    button(menu, "BACK", {W - 52, 22}, 80, [this] { go(Page::Main); });
+    else if (rec.hasRun()) {
+        state = "RUN READY - " +
+                std::to_string(rec.run().pressCount()) +
+                " PRESSES";
+    }
+    else {
+        state = "IDLE - NO RUN CAPTURED";
+    }
+
+    auto stateLabel =
+        label(
+            state,
+            {W / 2, H - 42},
+            0.30f
+        );
+
+    stateLabel->setOpacity(220);
+
+    // --------------------------------------------------------
+    // Live metrics
+    // --------------------------------------------------------
+
+    float cardW = (W - 42.f) / 3.f;
+    float metricY = H - 70.f;
+
+    auto metric = [&](float x, char const* title, std::string value) {
+        label(
+            title,
+            {x, metricY + 10.f},
+            0.23f
+        )->setOpacity(130);
+
+        label(
+            value,
+            {x, metricY - 6.f},
+            0.34f
+        );
+    };
+
+    metric(
+        12.f + cardW * 0.5f,
+        "PRESSES",
+        std::to_string(rec.run().pressCount())
+    );
+
+    metric(
+        12.f + cardW * 1.5f,
+        "EVENTS",
+        std::to_string(rec.run().inputs.size())
+    );
+
+    std::string tps =
+        rec.tps() > 0
+            ? std::to_string(rec.tps())
+            : "?";
+
+    metric(
+        12.f + cardW * 2.5f,
+        "TPS",
+        tps
+    );
+
+    // --------------------------------------------------------
+    // Row 1: recording / analysis / clear
+    // --------------------------------------------------------
+
+    float bw = (W - 36.f) / 3.f;
+    float row1 = H - 112.f;
+
+    button(
+        menu,
+        rec.recording() ? "STOP RECORDING" : "RECORD",
+        {12.f + bw * 0.5f, row1},
+        bw - 6.f,
+        [this] {
+            auto& recorder = InputRecorder::get();
+
+            if (recorder.recording()) {
+                Engine::get().stopRecording();
+                toast("RECORDING STOPPED");
+                go(Page::Record);
+                return;
+            }
+
+            std::string err;
+
+            if (!Engine::get().startRecording(err)) {
+                toast(err);
+                go(Page::Record);
+                return;
+            }
+
+            // The recorder now survives the transition out of the
+            // pause menu. Closing immediately removes UI distractions.
+            toast("RECORD ARMED - START YOUR MACRO");
+            close();
+        },
+        rec.recording(),
+        32.f
+    );
+
+    button(
+        menu,
+        "ANALYZE ALL CLICKS",
+        {12.f + bw * 1.5f, row1},
+        bw - 6.f,
+        [this] {
+            auto& recorder = InputRecorder::get();
+
+            if (!recorder.hasRun()) {
+                toast("NO COMPLETED RECORDING");
+                return;
+            }
+
+            // Recorded Replay is explicitly the analysis method for
+            // this page. It tests every recorded press.
+            Engine::get().switchMethod(Method::ReplayProbe);
+            cfg::setMethod(Method::ReplayProbe);
+
+            std::string err;
+
+            if (!Engine::get().startAnalysis(err))
+                toast(err);
+            else
+                toast("ANALYZING EVERY RECORDED CLICK");
+        },
+        false,
+        32.f
+    );
+
+    button(
+        menu,
+        "CLEAR RUN",
+        {12.f + bw * 2.5f, row1},
+        bw - 6.f,
+        [this] {
+            InputRecorder::get().clearRun();
+            toast("RUN CLEARED");
+            go(Page::Record);
+        },
+        false,
+        32.f
+    );
+
+    // --------------------------------------------------------
+    // Row 2: playback
+    // --------------------------------------------------------
+
+    float row2 = H - 150.f;
+
+    button(
+        menu,
+        "PLAYBACK",
+        {12.f + bw * 0.5f, row2},
+        bw - 6.f,
+        [this] {
+            std::string err;
+
+            if (!Engine::get().playbackStart(err))
+                toast(err);
+            else
+                toast("PLAYBACK ARMED");
+        },
+        false,
+        30.f
+    );
+
+    button(
+        menu,
+        "PAUSE PB",
+        {12.f + bw * 1.5f, row2},
+        bw - 6.f,
+        [] {
+            Engine::get().playbackPause();
+        },
+        false,
+        30.f
+    );
+
+    button(
+        menu,
+        "STOP PB",
+        {12.f + bw * 2.5f, row2},
+        bw - 6.f,
+        [] {
+            Engine::get().playbackStop();
+        },
+        false,
+        30.f
+    );
+
+    // --------------------------------------------------------
+    // Stored runs
+    // --------------------------------------------------------
+
+    auto saved = eng.storage().list();
+
+    if (m_savedIdx >= static_cast<int>(saved.size()))
+        m_savedIdx = 0;
+
+    float infoY = 92.f;
+
+    label(
+        "SAVED RUNS",
+        {16.f, infoY},
+        0.27f,
+        {0, 0.5f}
+    )->setOpacity(140);
+
+    if (saved.empty()) {
+
+        label(
+            "No saved runs.",
+            {16.f, infoY - 18.f},
+            0.30f,
+            {0, 0.5f}
+        )->setOpacity(120);
+
+    }
+    else {
+        auto const& item =
+            saved[static_cast<size_t>(m_savedIdx)];
+
+        label(
+            std::to_string(m_savedIdx + 1) +
+            "/" +
+            std::to_string(saved.size()) +
+            "   " +
+            std::to_string(item.presses) +
+            " presses   " +
+            std::to_string(item.durationTicks) +
+            " ticks",
+            {16.f, infoY - 18.f},
+            0.29f,
+            {0, 0.5f}
+        );
+
+        std::string fn = item.fileName;
+
+        button(
+            menu,
+            "<",
+            {W - 150.f, infoY - 18.f},
+            42.f,
+            [this, n = saved.size()] {
+                m_savedIdx =
+                    (m_savedIdx +
+                     static_cast<int>(n) - 1) %
+                    static_cast<int>(n);
+                go(Page::Record);
+            },
+            false,
+            26.f
+        );
+
+        button(
+            menu,
+            ">",
+            {W - 104.f, infoY - 18.f},
+            42.f,
+            [this, n = saved.size()] {
+                m_savedIdx =
+                    (m_savedIdx + 1) %
+                    static_cast<int>(n);
+                go(Page::Record);
+            },
+            false,
+            26.f
+        );
+
+        button(
+            menu,
+            "LOAD",
+            {W - 54.f, infoY - 18.f},
+            70.f,
+            [this, fn] {
+                RecordedRun r;
+                std::string err;
+
+                if (Engine::get().storage().load(fn, r, err)) {
+                    InputRecorder::get().setRun(std::move(r));
+                    toast("RUN LOADED");
+                }
+                else {
+                    toast("LOAD FAILED: " + err);
+                }
+
+                go(Page::Record);
+            },
+            false,
+            26.f
+        );
+
+        button(
+            menu,
+            "DELETE",
+            {W - 54.f, infoY - 48.f},
+            70.f,
+            [this, fn] {
+                std::string err;
+
+                Engine::get().storage().remove(
+                    fn,
+                    err
+                );
+
+                toast(
+                    err.empty()
+                        ? "RUN DELETED"
+                        : "DELETE FAILED: " + err
+                );
+
+                go(Page::Record);
+            },
+            false,
+            26.f
+        );
+    }
+
+    // --------------------------------------------------------
+    // Analysis state
+    // --------------------------------------------------------
+
+    label(
+        eng.progress().label,
+        {16.f, 50.f},
+        0.28f,
+        {0, 0.5f}
+    )->setOpacity(160);
+
+    label(
+        "Every recorded PRESS is tested at offsets -15 ... +15.",
+        {16.f, 34.f},
+        0.27f,
+        {0, 0.5f}
+    )->setOpacity(120);
+
+    label(
+        "First death on each side ends that side of the window.",
+        {16.f, 20.f},
+        0.25f,
+        {0, 0.5f}
+    )->setOpacity(110);
+
+    button(
+        menu,
+        "BACK",
+        {W - 52.f, 18.f},
+        80.f,
+        [this] {
+            go(Page::Main);
+        },
+        false,
+        26.f
+    );
 }
 
 void MainPanel::buildSettings() {
@@ -377,23 +692,42 @@ void MainPanel::buildInfo() {
 
 void MainPanel::update(float) {
     auto& eng = Engine::get();
+
+    if (!eng.isPaused()) {
+        close();
+        return;
+    }
+
     if (m_progress) {
         auto p = eng.progress();
         m_progress->setString(p.label.c_str());
     }
+
     if (m_recLabel) {
         auto& rec = InputRecorder::get();
+
         std::string s;
+
         if (rec.recording()) {
-            s = "REC  " + std::to_string(rec.run().pressCount()) + " presses / " +
-                std::to_string(rec.run().inputs.size()) + " events";
+            s =
+                "ARMED   " +
+                std::to_string(rec.run().pressCount()) +
+                " presses   " +
+                std::to_string(rec.run().inputs.size()) +
+                " events";
         }
         else if (rec.hasRun()) {
-            s = "Recorded: " + std::to_string(rec.run().pressCount()) +
-                " presses / " + std::to_string(rec.run().inputs.size()) +
-                " events   Duration: " + std::to_string(rec.run().durationTicks) + " ticks";
+            s =
+                "READY   " +
+                std::to_string(rec.run().pressCount()) +
+                " presses   " +
+                std::to_string(rec.run().inputs.size()) +
+                " events";
         }
-        else s = "No recording";
+        else {
+            s = "NO RECORDING";
+        }
+
         m_recLabel->setString(s.c_str());
     }
 }

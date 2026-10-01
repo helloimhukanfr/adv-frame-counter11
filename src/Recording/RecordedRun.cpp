@@ -35,18 +35,54 @@ json::Value RecordedRun::toJson() const {
 }
 
 bool RecordedRun::validate(std::string& err) const {
-    if (tps < 1 || tps > 100000) { err = "invalid or unavailable tps"; return false; }
-    if (durationTicks < 0) { err = "negative duration"; return false; }
+    if (tps < 0 || tps > 100000) {
+        err = "invalid tps";
+        return false;
+    }
+
+    if (durationTicks < 0) {
+        err = "negative duration";
+        return false;
+    }
+
+    if (inputs.empty()) {
+        err = "no recorded inputs";
+        return false;
+    }
+
     int last = 0;
+
     for (size_t i = 0; i < inputs.size(); ++i) {
         auto const& e = inputs[i];
-        if (e.tick < 0) { err = "negative tick at input " + std::to_string(i); return false; }
-        if (e.tick < last) { err = "ticks not ordered at input " + std::to_string(i); return false; }
-        if (e.player != 1 && e.player != 2) { err = "bad player at input " + std::to_string(i); return false; }
-        if (e.button < 1 || e.button > 3) { err = "bad button at input " + std::to_string(i); return false; }
+
+        if (e.tick < 0) {
+            err = "negative tick at input " + std::to_string(i);
+            return false;
+        }
+
+        if (e.tick < last) {
+            err = "ticks not ordered at input " + std::to_string(i);
+            return false;
+        }
+
+        if (e.player != 1 && e.player != 2) {
+            err = "bad player at input " + std::to_string(i);
+            return false;
+        }
+
+        if (e.button < 1 || e.button > 3) {
+            err = "bad button at input " + std::to_string(i);
+            return false;
+        }
+
         last = e.tick;
     }
-    if (!inputs.empty() && inputs.back().tick > durationTicks) { err = "input beyond duration"; return false; }
+
+    if (inputs.back().tick > durationTicks) {
+        err = "input beyond duration";
+        return false;
+    }
+
     return true;
 }
 

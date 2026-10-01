@@ -4,6 +4,7 @@
 #include "../Engine/Engine.hpp"
 #include "../Platform/Game.hpp"
 #include "../Platform/Settings.hpp"
+#include "../Recording/InputRecorder.hpp"
 #include <chrono>
 
 using namespace geode::prelude;
@@ -65,7 +66,18 @@ void FrameHUD::rebuildText() {
     bool ex = cfg::b("show-exact"), bk = cfg::b("show-bucket");
     bool compact = cfg::b("compact-mode");
     Method me = Engine::get().active();
+    auto& rec = InputRecorder::get();
+
     std::string out;
+
+    if (rec.recording()) {
+        out +=
+            "REC  " +
+            std::to_string(rec.run().pressCount()) +
+            "P / " +
+            std::to_string(rec.run().inputs.size()) +
+            "E\n";
+    }
 
     auto head = [&](char const* t) { if (!compact) out += std::string(t) + "\n"; };
     auto playersLine = [&](Method m) {
@@ -188,7 +200,16 @@ void FrameHUD::refresh(PlayLayer* pl) {
         m_lastVersion = ver; m_lastSig = sig;
         rebuildText();
     }
-    if (showHud && (++m_frames % 15) == 0) m_sub->setString(Engine::get().statusLine().c_str());
+    if (showHud && (++m_frames % 10) == 0) {
+        auto& rec = InputRecorder::get();
+
+        if (rec.recording() || rec.hasRun())
+            rebuildText();
+
+        m_sub->setString(
+            Engine::get().statusLine().c_str()
+        );
+    }
     if (showHud) placeHud();
     placeLabels(pl);
 }

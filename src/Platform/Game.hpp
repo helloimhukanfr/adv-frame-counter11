@@ -2,13 +2,29 @@
 // ALL direct reads of Geometry Dash fields live here, so API drift (field
 // renames between Geode/bindings versions) is fixed in one place.
 #include "../Recording/RecordedRun.hpp"
+#include <cmath>
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 
 namespace afc::game {
 
 // The tick identity used everywhere: GJBaseGameLayer::m_gameState.m_currentProgress.
-inline int tick(GJBaseGameLayer* l) { return static_cast<int>(l->m_gameState.m_currentProgress); }
+inline int tick(GJBaseGameLayer* l) {
+    if (!l) return -1;
+
+    // GD 2.2 physics is based around 240 steps/sec.
+    // Use level time for the macro/frame identity so an input captured
+    // through handleButton gets the same integer frame convention used
+    // by current replay implementations.
+    double t = l->m_gameState.m_levelTime;
+
+    if (std::isfinite(t) && t >= 0.0) {
+        return static_cast<int>(std::floor(t * 240.0)) + 1;
+    }
+
+    // Defensive fallback only if level time is unavailable.
+    return static_cast<int>(l->m_gameState.m_currentProgress);
+}
 
 inline int modeOf(PlayerObject* p) {
     if (!p) return 0;

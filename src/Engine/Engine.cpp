@@ -18,6 +18,11 @@ public:
 
 Engine::Engine() = default;
 
+// Recording diagnostics are intentionally reset once per process.
+namespace {
+    int g_afcLoggedInputEvents = 0;
+}
+
 Method Engine::cfg_method() { return cfg::method(); }
 
 bool Engine::experimentalAllowed() const { return cfg::b("allow-experimental"); }
@@ -43,44 +48,74 @@ void Engine::ensurePump() {
 // ------------------------------------------------------------------ lifecycle
 
 void Engine::attemptStart(PlayLayer* pl) {
-    if (WindowProbe::probing()) return;    // our own resetLevel() during Method 3
+    if (WindowProbe::probing()) return;
+
     cancelAnalysis(false);
+
     m_pl = pl;
     m_paused = false;
     m_tick = m_prevTick = -1;
 
-    // Timing is learned again from the actual physics calls of this attempt.
-    // Never carry a guessed/stale 240 TPS value into a new run.
     m_stepDt = 0.f;
     m_stepKnown = false;
 
     m_m2.onAttemptReset();
     m_m3.onAttemptReset();
-    MeasurementManager::get().setCapacity(static_cast<size_t>(std::max(8, cfg::i("history-size"))));
+
+    MeasurementManager::get().setCapacity(
+        static_cast<size_t>(
+            std::max(8, cfg::i("history-size"))
+        )
+    );
+
     int tps = 0;
-    if (m_stepKnown && std::isfinite(m_stepDt) && m_stepDt > 0.f) {
-        tps = static_cast<int>(std::lround(1.f / m_stepDt));
-        if (tps < 1 || tps > 100000) tps = 0;
+
+    if (m_stepKnown &&
+        std::isfinite(m_stepDt) &&
+        m_stepDt > 0.f) {
+        tps = static_cast<int>(
+            std::lround(1.f / m_stepDt)
+        );
+
+        if (tps < 1 || tps > 100000)
+            tps = 0;
     }
 
-    InputRecorder::get().newAttempt(
+    auto& rec = InputRecorder::get();
+
+    bool wasRecording = rec.recording();
+
+    rec.newAttempt(
         game::levelID(pl),
         game::levelName(pl),
         tps,
         game::platformer(pl)
     );
+
     m_lastMethod = cfg_method();
+
     ensurePump();
 
-    if (m_pendingPlay) {                      // playback requested via resetLevel()
+    if (m_pendingPlay) {
         m_pendingPlay = false;
         m_pb = PlaybackState::Playing;
         m_pbIdx = 0;
-    } else if (m_pb != PlaybackState::Idle) {
-        m_pb = PlaybackState::Idle;           // natural respawn cancels playback
     }
-    if (cfg::b("record-auto") && cfg::enabled() && m_pb == PlaybackState::Idle) {
-        std::string err; startRecording(err);   // never clobber the run that is being played back
+    else if (m_pb != PlaybackState::Idle) {
+        m_pb = PlaybackState::Idle;
+    }
+
+    if (wasRecording && rec.recording()) {
+        log::info(
+            "[AFC] Recording survived level reset; waiting for first real press"
+        );
+    }
+
+    if (cfg::b("record-auto") &&
+        cfg::enabled() &&
+        m_pb == PlaybackState::Idle) {
+        std::string err;
+        startRecording(err);
     }
 }
 
@@ -180,15 +215,53 @@ void Engine::tickPost(PlayLayer* pl, int beforeTick, int afterTick, float dt) {
 }
 
 void Engine::input(PlayLayer* pl, bool down, int button, bool p1) {
-    if (WindowProbe::probing() || m_injecting || !pl || !cfg::enabled()) return;
-    if (game::practice(pl) && !cfg::b("practice-support")) return;
-    InputEvent e = game::makeEvent(pl, down, button, p1);
-    int idx = InputRecorder::get().push(e);       // observation only: nothing is injected or altered
+    if (WindowProbe::probing() || m_injecting ||
+        !pl || !cfg::enabled())
+        return;
+
+    if (game::practice(pl) &&
+        !cfg::b("practice-support"))
+        return;
+
+    InputEvent e =
+        game::makeEvent(
+            pl,
+            down,
+            button,
+            p1
+        );
+
+    auto& rec = InputRecorder::get();
+
+    int idx = rec.push(e);
+
+    if (rec.recording()) {
+        // Diagnostic breadcrumbs only for the first few events.
+        // This lets the Android log prove whether an external macro
+        // actually reaches the normal handleButton path.
+        if (g_afcLoggedInputEvents < 12) {
+            log::info(
+                "[AFC] captured {} event: tick={} P{} button={} {}",
+                down ? "PRESS" : "RELEASE",
+                e.tick,
+                e.player,
+                e.button,
+                down ? "down" : "up"
+            );
+            ++g_afcLoggedInputEvents;
+        }
+    }
+
     int lvl = game::levelID(pl);
     Method m = cfg_method();
     bool compare = cfg::mode() == cfg::Mode::Compare;
-    if (m == Method::DirectTick || compare) m_m1.onInput(e, idx, lvl);
-    if ((m == Method::StateProbe || compare) && experimentalAllowed()) m_m2.onInput(e, idx, lvl);
+
+    if (m == Method::DirectTick || compare)
+        m_m1.onInput(e, idx, lvl);
+
+    if ((m == Method::StateProbe || compare) &&
+        experimentalAllowed())
+        m_m2.onInput(e, idx, lvl);
 }
 
 void Engine::paused(PlayLayer* pl) {
@@ -298,7 +371,44 @@ ProgressInfo Engine::progress() const {
 // ----------------------------------------------------------------- recording
 
 bool Engine::startRecording(std::string& err) {
-    if (!InputRecorder::get().start()) { err = "no active level attempt"; return false; }
+    if (!m_pl) {
+        err = "no active level";
+        return false;
+    }
+
+    auto& rec = InputRecorder::get();
+
+    // The pause UI should be able to arm recording as soon as a PlayLayer
+    // exists, even if an unusual level transition hasn't initialized the
+    // recorder metadata yet.
+    if (!rec.attemptValid()) {
+        int tps = 0;
+
+        if (m_stepKnown &&
+            std::isfinite(m_stepDt) &&
+            m_stepDt > 0.f) {
+            tps = static_cast<int>(
+                std::lround(1.f / m_stepDt)
+            );
+
+            if (tps < 1 || tps > 100000)
+                tps = 0;
+        }
+
+        rec.newAttempt(
+            game::levelID(m_pl),
+            game::levelName(m_pl),
+            tps,
+            game::platformer(m_pl)
+        );
+    }
+
+    if (!rec.start()) {
+        err = "could not arm recording";
+        return false;
+    }
+
+    log::info("[AFC] Recording armed. Leave the menu and start the macro.");
     return true;
 }
 

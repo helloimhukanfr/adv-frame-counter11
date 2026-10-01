@@ -22,44 +22,111 @@ struct WindowResult {
     std::string note;
 };
 
-inline WindowResult solveWindow(int range, std::function<Probe(int)> const& probe) {
+inline WindowResult solveWindow(
+    int range,
+    std::function<Probe(int)> const& probe
+) {
     WindowResult r;
-    auto run = [&](int d) { ++r.probesRun; return probe(d); };
+
+    range = std::max(1, std::min(15, range));
+
+    auto run = [&](int d) {
+        ++r.probesRun;
+        return probe(d);
+    };
+
+    // The real recorded click must survive.
     Probe base = run(0);
+
     if (base == Probe::Failed) {
         r.validity = Validity::MethodLimitation;
-        r.note = "probe could not run";
+        r.note = "base probe could not run";
         r.probesSkipped = 2 * range;
         return r;
     }
+
     if (base == Probe::Dies) {
-        // The real input did not survive inside the probe: the state restore or
-        // stepping does not reproduce the live game. Report it, never guess.
         r.validity = Validity::MethodLimitation;
-        r.note = "recorded input died in probe (state not reproduced)";
+        r.note = "real recorded input did not reproduce in probe";
         r.probesSkipped = 2 * range;
         return r;
     }
-    int lo = 0, hi = 0;
-    bool cappedLo = true, cappedHi = true;
-    for (int d = -1; d >= -range; --d) {
-        Probe p = run(d);
-        if (p == Probe::Failed) { r.validity = Validity::MethodLimitation; r.note = "probe failed"; return r; }
-        if (p == Probe::Dies) { cappedLo = false; break; }
-        lo = d;
-    }
+
+    int lo = 0;
+    int hi = 0;
+
+    bool negativeOpen = true;
+    bool positiveOpen = true;
+
+    // Walk outward symmetrically.
+    // This mirrors the way a frame window is actually searched:
+    // test the adjacent frame first, then continue outward until
+    // that side dies.
     for (int d = 1; d <= range; ++d) {
-        Probe p = run(d);
-        if (p == Probe::Failed) { r.validity = Validity::MethodLimitation; r.note = "probe failed"; return r; }
-        if (p == Probe::Dies) { cappedHi = false; break; }
-        hi = d;
+
+        if (negativeOpen) {
+            Probe p = run(-d);
+
+            if (p == Probe::Failed) {
+                r.validity = Validity::MethodLimitation;
+                r.note = "negative-side probe failed";
+                return r;
+            }
+
+            if (p == Probe::Dies) {
+                negativeOpen = false;
+            }
+            else {
+                lo = -d;
+            }
+        }
+
+        if (positiveOpen) {
+            Probe p = run(d);
+
+            if (p == Probe::Failed) {
+                r.validity = Validity::MethodLimitation;
+                r.note = "positive-side probe failed";
+                return r;
+            }
+
+            if (p == Probe::Dies) {
+                positiveOpen = false;
+            }
+            else {
+                hi = d;
+            }
+        }
+
+        if (!negativeOpen && !positiveOpen)
+            break;
     }
-    r.earliest = lo; r.latest = hi;
+
+    r.earliest = lo;
+    r.latest = hi;
+
+    // Number of integer frame positions in the inclusive window.
     r.exact = hi - lo + 1;
-    r.capped = cappedLo || cappedHi;
+
+    r.capped =
+        negativeOpen ||
+        positiveOpen;
+
     r.validity = Validity::Valid;
-    r.probesSkipped = (2 * range + 1) - r.probesRun;
-    if (r.probesSkipped < 0) r.probesSkipped = 0;
+
+    r.probesSkipped =
+        (2 * range + 1) - r.probesRun;
+
+    if (r.probesSkipped < 0)
+        r.probesSkipped = 0;
+
+    r.note =
+        "tested integer offsets [" +
+        std::to_string(lo) +
+        "," +
+        std::to_string(hi) +
+        "]";
+
     return r;
 }
 

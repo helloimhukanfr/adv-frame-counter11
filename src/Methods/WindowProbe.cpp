@@ -5,46 +5,112 @@ using namespace geode::prelude;
 
 namespace afc {
 
-Probe WindowProbe::survives(PlayLayer* pl, ProbeJob const& job, int offset, int horizon, float stepDt) {
-    if (!pl || !job.start || stepDt <= 0.f) return Probe::Failed;
-    if (job.targetTick + offset < job.startTick) return Probe::Dies;   // before the snapshot: boundary
-    Scope scope;
-    WindowProbe::clearOutcome();
+Probe WindowProbe::survives(
+    PlayLayer* pl,
+    ProbeJob const& job,
+    int offset,
+    int horizon,
+    float stepDt
+) {
+    if (!pl ||
+        !job.start ||
+        stepDt <= 0.f)
+        return Probe::Failed;
 
-    // Build the shifted event list: the target press and its matching release move together.
+    if (job.targetTick + offset < job.startTick)
+        return Probe::Failed;
+
+    Scope scope;
+
+    clearOutcome();
+
     std::vector<InputEvent> ev = job.events;
-    bool pressDone = false, releaseDone = false;
+
+    bool pressDone = false;
+    bool releaseDone = false;
+
     for (auto& e : ev) {
-        if (!pressDone && e.down && e.tick == job.targetTick && e.player == job.player && e.button == job.button) {
-            e.tick += offset; pressDone = true; continue;
+        if (!pressDone &&
+            e.down &&
+            e.tick == job.targetTick &&
+            e.player == job.player &&
+            e.button == job.button) {
+
+            e.tick += offset;
+            pressDone = true;
+            continue;
         }
-        if (pressDone && !releaseDone && !e.down && e.tick >= job.targetTick &&
-            e.player == job.player && e.button == job.button) {
-            e.tick += offset; releaseDone = true;
+
+        if (pressDone &&
+            !releaseDone &&
+            !e.down &&
+            e.tick >= job.targetTick &&
+            e.player == job.player &&
+            e.button == job.button) {
+
+            e.tick += offset;
+            releaseDone = true;
         }
     }
-    if (!pressDone) return Probe::Failed;
-    std::stable_sort(ev.begin(), ev.end(), [](auto const& a, auto const& b) { return a.tick < b.tick; });
+
+    if (!pressDone)
+        return Probe::Failed;
+
+    std::stable_sort(
+        ev.begin(),
+        ev.end(),
+        [](auto const& a, auto const& b) {
+            return a.tick < b.tick;
+        }
+    );
 
     pl->loadFromCheckpoint(job.start);
 
-    int const end = job.targetTick + horizon;
+    int const end =
+        job.targetTick + horizon + 1;
+
     int prev = game::tick(pl);
+
     size_t ei = 0;
+
     for (int t = job.startTick; t < end; ++t) {
-        while (ei < ev.size() && ev[ei].tick < t) ++ei;
-        while (ei < ev.size() && ev[ei].tick == t) {
-            pl->handleButton(ev[ei].down, ev[ei].button, ev[ei].player == 1);
+
+        while (ei < ev.size() &&
+               ev[ei].tick < t)
+            ++ei;
+
+        while (ei < ev.size() &&
+               ev[ei].tick == t) {
+
+            pl->handleButton(
+                ev[ei].down,
+                ev[ei].button,
+                ev[ei].player == 1
+            );
+
             ++ei;
         }
-        pl->processCommands(stepDt, false, true);
-        int now = game::tick(pl);
-        if (now != prev + 1) return Probe::Failed;   // one call must equal exactly one tick
-        prev = now;
 
-        if (WindowProbe::died()) return Probe::Dies;
-        if (WindowProbe::completed()) return Probe::Survives;
+        pl->processCommands(
+            stepDt,
+            false,
+            true
+        );
+
+        if (WindowProbe::died())
+            return Probe::Dies;
+
+        if (WindowProbe::completed())
+            return Probe::Survives;
+
+        int now = game::tick(pl);
+
+        if (now != prev + 1)
+            return Probe::Failed;
+
+        prev = now;
     }
+
     return Probe::Survives;
 }
 

@@ -35,7 +35,16 @@ public:
     bool hasRun() const { return m_hasRun; }
     RecordedRun& run() { return m_run; }
     RecordedRun const& run() const { return m_run; }
-    void setRun(RecordedRun r) { m_run = std::move(r); m_hasRun = true; }
+    void setRun(RecordedRun r) {
+        m_run = std::move(r);
+        m_levelID = m_run.levelID;
+        m_levelName = m_run.levelName;
+        m_tps = m_run.tps;
+        m_valid = true;
+        m_recording = false;
+        m_waitingForFirstInput = false;
+        m_hasRun = true;
+    }
     void clearRun() { m_run = RecordedRun{}; m_hasRun = false; }
 
     int levelID() const { return m_levelID; }
@@ -55,6 +64,9 @@ private:
     std::string m_levelName;
     bool m_platformer = false, m_valid = false;
     bool m_recording = false, m_hasRun = false;
+    // RECORD can be armed while paused. A level reset performed by a
+    // macro before its first press must not cancel the session.
+    bool m_waitingForFirstInput = false;
     RecordedRun m_run;
 };
 
