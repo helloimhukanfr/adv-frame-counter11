@@ -25,7 +25,7 @@ private:
     void build();
     void buildMain(); void buildList(); void buildCompare(); void buildRecord(); void buildSettings(); void buildInfo();
 
-    CCMenuItemSpriteExtra* button(cocos2d::CCMenu* menu, std::string const& text, cocos2d::CCPoint pos,
+    cocos2d::CCMenuItemSpriteExtra* button(cocos2d::CCMenu* menu, std::string const& text, cocos2d::CCPoint pos,
                                            float w, std::function<void()> cb, bool selected = false, float h = 34.f);
     cocos2d::CCLabelBMFont* label(std::string const& text, cocos2d::CCPoint pos, float scale, cocos2d::CCPoint anchor = {0.5f, 0.5f});
     void toast(std::string const& t);

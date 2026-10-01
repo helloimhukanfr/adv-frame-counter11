@@ -39,7 +39,7 @@ class $modify(AfcPlayLayer, PlayLayer) {
         if (m_fields->hud && !afc::WindowProbe::probing()) m_fields->hud->refresh(this);
     }
 
-    void destroyPlayer(PlayerObject* p, GameObject* g) {
+    GameObject* destroyPlayer(PlayerObject* p, GameObject* g) {
         if (afc::WindowProbe::probing()) {            // simulated death: record it, do not play it
             afc::WindowProbe::markDeath();
             return nullptr;

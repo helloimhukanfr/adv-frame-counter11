@@ -15,10 +15,10 @@ class $modify(AfcBaseGameLayer, GJBaseGameLayer) {
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
     }
 
-    void processCommands(float dt, bool isHalfTick, bool isLastTick) {
+    void processCommands(float dt) {
         PlayLayer* pl = PlayLayer::get();
         if (pl && static_cast<GJBaseGameLayer*>(pl) == this)
             afc::Engine::get().tickPre(pl, dt);
-        GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
+        GJBaseGameLayer::processCommands(dt);
     }
 };
