@@ -50,7 +50,12 @@ class $modify(AfcPlayLayer, PlayLayer) {
     }
 
     void levelComplete() {
-        if (afc::WindowProbe::probing()) { afc::WindowProbe::markDeath(); return; }   // replay must not finish the level
+        if (afc::WindowProbe::probing()) {
+            // A probe that reaches the level end survived the tested window.
+            afc::WindowProbe::markComplete();
+            return;
+        }
+
         afc::Engine::get().attemptEnd(this, false);
         PlayLayer::levelComplete();
     }

@@ -48,11 +48,27 @@ void Engine::attemptStart(PlayLayer* pl) {
     m_pl = pl;
     m_paused = false;
     m_tick = m_prevTick = -1;
+
+    // Timing is learned again from the actual physics calls of this attempt.
+    // Never carry a guessed/stale 240 TPS value into a new run.
+    m_stepDt = 0.f;
+    m_stepKnown = false;
+
     m_m2.onAttemptReset();
     m_m3.onAttemptReset();
     MeasurementManager::get().setCapacity(static_cast<size_t>(std::max(8, cfg::i("history-size"))));
-    int tps = static_cast<int>(std::lround(1.f / m_stepDt));
-    InputRecorder::get().newAttempt(game::levelID(pl), game::levelName(pl), tps, game::platformer(pl));
+    int tps = 0;
+    if (m_stepKnown && std::isfinite(m_stepDt) && m_stepDt > 0.f) {
+        tps = static_cast<int>(std::lround(1.f / m_stepDt));
+        if (tps < 1 || tps > 100000) tps = 0;
+    }
+
+    InputRecorder::get().newAttempt(
+        game::levelID(pl),
+        game::levelName(pl),
+        tps,
+        game::platformer(pl)
+    );
     m_lastMethod = cfg_method();
     ensurePump();
 
@@ -237,7 +253,8 @@ bool Engine::startAnalysis(std::string& err) {
         return true;
     }
     if (!experimentalAllowed()) { err = "enable 'Allow experimental probing' first"; return false; }
-    if ((m == Method::StateProbe || m == Method::ReplayProbe) && !m_stepKnown) {
+    if ((m == Method::StateProbe || m == Method::ReplayProbe) &&
+        (!m_stepKnown || !std::isfinite(m_stepDt) || m_stepDt <= 0.f)) {
         err = "real physics timing has not been measured yet; resume the level briefly, then pause";
         return false;
     }

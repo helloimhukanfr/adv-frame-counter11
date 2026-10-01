@@ -273,7 +273,7 @@ void MainPanel::buildRecord() {
     button(menu, rec.recording() ? "STOP REC" : "RECORD", {15 + bw * 0.5f, y1}, bw - 6, [this] {
         std::string err;
         if (InputRecorder::get().recording()) { Engine::get().stopRecording(); toast("recording stopped"); }
-        else if (Engine::get().startRecording(err)) toast("recording real inputs... resume and play (macros work too)");
+        else if (Engine::get().startRecording(err)) toast("RECORD ARMED: resume and start the macro; level resets are preserved");
         else toast(err);
         go(Page::Record);
     }, rec.recording());
@@ -384,8 +384,15 @@ void MainPanel::update(float) {
     if (m_recLabel) {
         auto& rec = InputRecorder::get();
         std::string s;
-        if (rec.recording()) s = "REC  " + std::to_string(rec.run().pressCount()) + " inputs";
-        else if (rec.hasRun()) s = "Recorded: " + std::to_string(rec.run().pressCount()) + " inputs   Duration: " + std::to_string(rec.run().durationTicks) + " ticks";
+        if (rec.recording()) {
+            s = "REC  " + std::to_string(rec.run().pressCount()) + " presses / " +
+                std::to_string(rec.run().inputs.size()) + " events";
+        }
+        else if (rec.hasRun()) {
+            s = "Recorded: " + std::to_string(rec.run().pressCount()) +
+                " presses / " + std::to_string(rec.run().inputs.size()) +
+                " events   Duration: " + std::to_string(rec.run().durationTicks) + " ticks";
+        }
         else s = "No recording";
         m_recLabel->setString(s.c_str());
     }

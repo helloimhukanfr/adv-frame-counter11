@@ -44,13 +44,14 @@ public:
     bool attemptValid() const { return m_valid; }
 
 private:
-    static constexpr size_t kRingMax = 4096;
+    // Large enough to preserve long macro context for Method 2 without being unbounded.
+    static constexpr size_t kRingMax = 65536;
     std::deque<InputEvent> m_ring;
     int m_ringBase = 0;
     int m_pressIndex = 0;
     std::array<int, 2> m_lastPress{-1, -1};
     std::array<int, 2> m_gap{-1, -1};
-    int m_levelID = 0, m_tps = 240;
+    int m_levelID = 0, m_tps = 0;
     std::string m_levelName;
     bool m_platformer = false, m_valid = false;
     bool m_recording = false, m_hasRun = false;

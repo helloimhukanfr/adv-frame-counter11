@@ -42,7 +42,28 @@ void StateProbeMethod::onInput(InputEvent const& e, int pressIndex, int levelID)
         MeasurementManager::get().add(std::move(m));
         return;
     }
-    if (m_jobs.size() >= 24) { m_jobs.pop_front(); ++m_dropped; }   // bounded
+    // Keep substantially more pending inputs. A tiny 24-job queue made
+    // long macros lose almost all of their earlier measurements.
+    constexpr size_t kMaxPendingJobs = 1024;
+
+    if (m_jobs.size() >= kMaxPendingJobs) {
+        auto dropped = m_jobs.front();
+        m_jobs.pop_front();
+        ++m_dropped;
+
+        Measurement m;
+        m.levelID = dropped.levelID;
+        m.inputIndex = dropped.index;
+        m.tick = dropped.targetTick;
+        m.player = dropped.player;
+        m.button = dropped.button;
+        m.method = Method::StateProbe;
+        m.kind = Kind::Window;
+        m.validity = Validity::MethodLimitation;
+        m.note = "analysis queue limit reached; oldest probe was discarded";
+        MeasurementManager::get().add(std::move(m));
+    }
+
     m_jobs.push_back({*found, e.tick, pressIndex, e.player, e.button, levelID});
 }
 
@@ -66,7 +87,21 @@ bool StateProbeMethod::beginBatch(PlayLayer* pl, int curTick, int horizon, std::
     std::deque<Pending> keep;
     for (auto& p : m_jobs) {
         if (curTick < p.targetTick + horizon) { keep.push_back(p); continue; }   // not ready yet
-        if (!rec.ringCovers(p.start.tick)) continue;                           // events evicted
+        if (!rec.ringCovers(p.start.tick)) {
+            Measurement m;
+            m.levelID = p.levelID;
+            m.inputIndex = p.index;
+            m.tick = p.targetTick;
+            m.player = p.player;
+            m.button = p.button;
+            m.method = Method::StateProbe;
+            m.kind = Kind::Window;
+            m.validity = Validity::MethodLimitation;
+            m.note = "recorded input context was evicted before analysis";
+            MeasurementManager::get().add(std::move(m));
+            continue;
+        }
+
         ProbeJob j;
         j.start = p.start.cp; j.startTick = p.start.tick; j.targetTick = p.targetTick;
         j.inputIndex = p.index; j.player = p.player; j.button = p.button; j.levelID = p.levelID;

@@ -27,6 +27,15 @@ public:
     static bool probing() { return s_probing; }
     static void markDeath() { s_died = true; }
     static bool died() { return s_died; }
+
+    // Reaching the level end during a probe is a surviving outcome, not death.
+    static void markComplete() { s_completed = true; }
+    static bool completed() { return s_completed; }
+
+    static void clearOutcome() {
+        s_died = false;
+        s_completed = false;
+    }
     static void clearDeath() { s_died = false; }
 
     struct Scope {   // RAII: sets probing for a synchronous block
@@ -46,6 +55,7 @@ public:
 private:
     static inline bool s_probing = false;
     static inline bool s_died = false;
+    static inline bool s_completed = false;
 };
 
 } // namespace afc

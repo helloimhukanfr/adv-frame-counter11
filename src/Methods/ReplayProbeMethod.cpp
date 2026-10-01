@@ -66,10 +66,27 @@ bool ReplayProbeMethod::step(PlayLayer* pl, double budgetMs, int range, int hori
             ++m_ei;
         }
         int before = game::tick(pl);
-        WindowProbe::clearDeath();
+        WindowProbe::clearOutcome();
+
         pl->processCommands(stepDt, false, true);
-        if (WindowProbe::died()) { m_result = "replay died at tick " + std::to_string(m_tick) + " (desync)"; abort(pl, true); return true; }
-        if (game::tick(pl) != before + 1) { m_result = "one step did not equal one tick"; abort(pl, true); return true; }
+
+        if (WindowProbe::died()) {
+            m_result = "replay died at tick " + std::to_string(m_tick) + " (desync)";
+            abort(pl, true);
+            return true;
+        }
+
+        if (WindowProbe::completed()) {
+            m_result = "replay reached level end";
+            abort(pl, true);
+            return true;
+        }
+
+        if (game::tick(pl) != before + 1) {
+            m_result = "one step did not equal one tick";
+            abort(pl, true);
+            return true;
+        }
         ++m_tick;
 
         double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();

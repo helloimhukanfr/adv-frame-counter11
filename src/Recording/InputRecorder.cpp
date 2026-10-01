@@ -49,12 +49,16 @@ bool InputRecorder::start() {
 
 bool InputRecorder::stop(int durationTicks) {
     if (!m_recording) return false;
+
     m_recording = false;
     m_run.tps = m_tps;
+
     int last = m_run.inputs.empty() ? 0 : m_run.inputs.back().tick;
     m_run.durationTicks = durationTicks < last ? last : durationTicks;
+
     std::string err;
     m_hasRun = m_run.validate(err);
+
     return m_hasRun;
 }
 

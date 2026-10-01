@@ -35,7 +35,7 @@ json::Value RecordedRun::toJson() const {
 }
 
 bool RecordedRun::validate(std::string& err) const {
-    if (tps < 1 || tps > 100000) { err = "invalid tps"; return false; }
+    if (tps < 1 || tps > 100000) { err = "invalid or unavailable tps"; return false; }
     if (durationTicks < 0) { err = "negative duration"; return false; }
     int last = 0;
     for (size_t i = 0; i < inputs.size(); ++i) {

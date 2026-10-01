@@ -9,7 +9,7 @@ Probe WindowProbe::survives(PlayLayer* pl, ProbeJob const& job, int offset, int 
     if (!pl || !job.start || stepDt <= 0.f) return Probe::Failed;
     if (job.targetTick + offset < job.startTick) return Probe::Dies;   // before the snapshot: boundary
     Scope scope;
-    s_died = false;
+    WindowProbe::clearOutcome();
 
     // Build the shifted event list: the target press and its matching release move together.
     std::vector<InputEvent> ev = job.events;
@@ -41,7 +41,9 @@ Probe WindowProbe::survives(PlayLayer* pl, ProbeJob const& job, int offset, int 
         int now = game::tick(pl);
         if (now != prev + 1) return Probe::Failed;   // one call must equal exactly one tick
         prev = now;
-        if (s_died) return Probe::Dies;
+
+        if (WindowProbe::died()) return Probe::Dies;
+        if (WindowProbe::completed()) return Probe::Survives;
     }
     return Probe::Survives;
 }
