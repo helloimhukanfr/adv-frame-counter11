@@ -42,11 +42,11 @@ class $modify(AfcPlayLayer, PlayLayer) {
     void destroyPlayer(PlayerObject* p, GameObject* g) {
         if (afc::WindowProbe::probing()) {            // simulated death: record it, do not play it
             afc::WindowProbe::markDeath();
-            return nullptr;
+            return;
         }
-        auto* r = PlayLayer::destroyPlayer(p, g);
+
+        PlayLayer::destroyPlayer(p, g);
         afc::Engine::get().attemptEnd(this, false);
-        return r;
     }
 
     void levelComplete() {
