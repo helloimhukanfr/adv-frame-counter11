@@ -1,55 +1,69 @@
 name: Build Geode Mod
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - "**"
+  workflow_dispatch:
 
 jobs:
-  # Geode-free unit tests (core logic, JSON, run format, storage).
-  unit-tests:
+  tests:
     name: Core unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: bash tests/run_tests.sh
+      - uses: actions/checkout@v7
+      - name: Run tests
+        run: bash tests/run_tests.sh
 
   build:
-    needs: unit-tests
+    needs: tests
     strategy:
       fail-fast: false
       matrix:
-        config:
+        include:
           - name: Android32
-            os: ubuntu-latest
             target: Android32
           - name: Android64
-            os: ubuntu-latest
             target: Android64
 
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Build the mod
+      - name: Build Geode mod
+        id: build
         uses: geode-sdk/build-geode-mod@main
         with:
-          combine: true
-          target: ${{ matrix.config.target }}
+          sdk: given
+          target: ${{ matrix.target }}
+          combine: false
+          configure-args: -DGEODE_PACKAGE_ZSTD=OFF
 
-  package:
-    name: Package builds
-    runs-on: ubuntu-latest
-    needs: ["build"]
+      - name: Verify package
+        shell: bash
+        run: |
+          set -e
+          echo "=== GENERATED GEODE PACKAGES ==="
+          find build output -type f -name "*.geode" -print 2>/dev/null || true
 
-    steps:
-      - uses: geode-sdk/build-geode-mod/combine@main
-        id: build
+          PACKAGE="$(find build output -type f -name "*.geode" -print -quit)"
+          test -n "$PACKAGE"
 
-      - uses: actions/upload-artifact@v4
+          echo "=== PACKAGE ==="
+          file "$PACKAGE"
+          ls -lh "$PACKAGE"
+
+          echo "=== PACKAGE CONTENTS ==="
+          unzip -l "$PACKAGE"
+
+          echo "=== PACKAGE INTEGRITY ==="
+          unzip -t "$PACKAGE"
+
+      - name: Upload Android package
+        uses: actions/upload-artifact@v7
         with:
-          name: Build Output
-          path: ${{ steps.build.outputs.build-output }}
+          name: Advanced-Frame-Counter-${{ matrix.name }}
+          path: ${{ steps.build.outputs.build-output }}/*.geode
+          if-no-files-found: error
