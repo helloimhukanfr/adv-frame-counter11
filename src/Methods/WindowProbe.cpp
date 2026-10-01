@@ -37,7 +37,7 @@ Probe WindowProbe::survives(PlayLayer* pl, ProbeJob const& job, int offset, int 
             pl->handleButton(ev[ei].down, ev[ei].button, ev[ei].player == 1);
             ++ei;
         }
-        pl->processCommands(stepDt);
+        pl->processCommands(stepDt, false, true);
         int now = game::tick(pl);
         if (now != prev + 1) return Probe::Failed;   // one call must equal exactly one tick
         prev = now;
