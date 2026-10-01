@@ -1,23 +1,20 @@
 {
   "geode": "5.10.1",
   "gd": {
-    "win": "2.2081",
-    "android": "2.2081",
-    "mac": "2.2081",
-    "ios": "2.2081"
+    "android": "2.2081"
   },
   "id": "helloimhukanfr.aframecounter",
   "name": "Advanced Frame Counter",
-  "version": "v2.0.0",
+  "version": "v2.0.1",
   "developer": "helloimhukanfr",
   "description": "Real Geometry Dash frame timing and input analysis.",
   "links": {
     "source": "https://github.com/helloimhukanfr/adv-frame-counter11"
   },
   "tags": [
-    "utility",
+    "gameplay",
     "interface",
-    "gameplay"
+    "utility"
   ],
   "resources": {
     "sprites": [
