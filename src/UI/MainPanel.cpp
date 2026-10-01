@@ -41,7 +41,7 @@ bool MainPanel::init() {
     this->setKeypadEnabled(true);
     auto win = CCDirector::get()->getWinSize();
     // Responsive: wide screens (20:9, tablets) get a wider panel; never beyond safe margins.
-    m_size = {std::min(win.width - 30.f, 470.f), std::min(win.height - 12.f, 304.f)};
+    m_size.setSize(std::min(win.width - 30.f, 470.f), std::min(win.height - 12.f, 304.f));
     auto bg = cocos2d::extension::CCScale9Sprite::create("square02b_001.png", {0, 0, 80, 80});
     bg->setContentSize(m_size);
     bg->setColor({10, 14, 24});
