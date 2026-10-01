@@ -10,60 +10,165 @@ jobs:
   tests:
     name: Core unit tests
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v7
-      - name: Run tests
+      - uses: actions/checkout@v4
+
+      - name: Run core tests
         run: bash tests/run_tests.sh
 
   build:
+    name: ${{ matrix.name }}
     needs: tests
+    runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Android32
-            target: Android32
           - name: Android64
             target: Android64
-
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+          - name: Android32
+            target: Android32
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Build Geode mod
         id: build
         uses: geode-sdk/build-geode-mod@main
         with:
           sdk: given
+          cli: latest
           target: ${{ matrix.target }}
           combine: false
           configure-args: -DGEODE_PACKAGE_ZSTD=OFF
 
-      - name: Verify package
+      - name: Verify generated package
         shell: bash
         run: |
-          set -e
-          echo "=== GENERATED GEODE PACKAGES ==="
-          find build output -type f -name "*.geode" -print 2>/dev/null || true
+          set -euo pipefail
 
-          PACKAGE="$(find build output -type f -name "*.geode" -print -quit)"
-          test -n "$PACKAGE"
+          echo "=== BUILD COMMIT ==="
+          git rev-parse HEAD
 
-          echo "=== PACKAGE ==="
-          file "$PACKAGE"
-          ls -lh "$PACKAGE"
+          echo "=== OUTPUT ==="
+          find output build -type f -name '*.geode' -print 2>/dev/null || true
 
-          echo "=== PACKAGE CONTENTS ==="
-          unzip -l "$PACKAGE"
+          PACKAGE="$(find output -type f -name '*.geode' -print -quit)"
 
-          echo "=== PACKAGE INTEGRITY ==="
-          unzip -t "$PACKAGE"
+          if [ -z "${PACKAGE}" ]; then
+            echo "ERROR: no .geode package was generated"
+            exit 1
+          fi
 
-      - name: Upload Android package
-        uses: actions/upload-artifact@v7
+          echo "=== PACKAGE PATH ==="
+          echo "${PACKAGE}"
+
+          echo "=== PACKAGE FILE ==="
+          file "${PACKAGE}"
+          ls -lh "${PACKAGE}"
+
+          echo "=== ZIP INTEGRITY ==="
+          unzip -t "${PACKAGE}"
+
+          rm -rf verify-package
+          mkdir verify-package
+
+          echo "=== EXTRACT ==="
+          unzip -q "${PACKAGE}" -d verify-package
+
+          echo "=== PACKAGE FILE TREE ==="
+          find verify-package -type f -print | sort
+
+          python3 - "${PACKAGE}" "${{ matrix.target }}" <<'PYVERIFY'
+import json
+import sys
+import zipfile
+from pathlib import Path
+
+package = Path(sys.argv[1])
+target = sys.argv[2]
+
+with zipfile.ZipFile(package) as z:
+    names = [n for n in z.namelist() if not n.endswith("/")]
+
+    # A valid Geode package must contain metadata at package root.
+    if "mod.json" not in names:
+        raise SystemExit("ERROR: mod.json is missing from package root")
+
+    # Prevent accidental nested/repackaged .geode files.
+    nested = [n for n in names if n.endswith(".geode")]
+    if nested:
+        raise SystemExit(f"ERROR: nested .geode files found: {nested}")
+
+    meta = json.loads(z.read("mod.json"))
+
+    expected_id = "helloimhukanfr.aframecounter"
+
+    if meta.get("id") != expected_id:
+        raise SystemExit(f"ERROR: wrong mod ID: {meta.get('id')!r}")
+
+    if meta.get("geode") != "5.10.1":
+        raise SystemExit(f"ERROR: wrong Geode version: {meta.get('geode')!r}")
+
+    gd = meta.get("gd")
+    if not isinstance(gd, dict) or gd.get("android") != "2.2081":
+        raise SystemExit(f"ERROR: wrong Android GD target: {gd!r}")
+
+    if target == "Android64":
+        expected_suffix = ".android64.so"
+    else:
+        expected_suffix = ".android32.so"
+
+    binaries = [
+        n for n in names
+        if n.endswith(expected_suffix)
+    ]
+
+    if len(binaries) != 1:
+        raise SystemExit(
+            f"ERROR: expected exactly one {expected_suffix} binary, found {binaries}"
+        )
+
+    info = z.getinfo(binaries[0])
+
+    if info.file_size <= 0:
+        raise SystemExit("ERROR: native binary is empty")
+
+    print("=== VERIFIED GEODE PACKAGE ===")
+    print("ID:", meta["id"])
+    print("Geode:", meta["geode"])
+    print("Android GD:", gd["android"])
+    print("Architecture binary:", binaries[0])
+    print("Binary bytes:", info.file_size)
+    print("Root mod.json: PRESENT")
+    print("Nested .geode: NONE")
+    print("ZIP integrity: PASS")
+PYVERIFY
+
+          echo "=== ARCHITECTURE CHECK ==="
+
+          BINARY="$(find verify-package -type f -name '*.so' -print -quit)"
+
+          if [ -z "${BINARY}" ]; then
+            echo "ERROR: extracted package contains no .so binary"
+            exit 1
+          fi
+
+          file "${BINARY}"
+
+          if [ "${{ matrix.target }}" = "Android64" ]; then
+            file "${BINARY}" | grep -E 'ELF 64-bit.*ARM aarch64' >/dev/null
+          else
+            file "${BINARY}" | grep -E 'ELF 32-bit.*ARM' >/dev/null
+          fi
+
+          echo "=== ALL PACKAGE CHECKS PASSED ==="
+
+      - name: Upload verified package
+        uses: actions/upload-artifact@v4
         with:
-          name: Advanced-Frame-Counter-${{ matrix.name }}
-          path: ${{ steps.build.outputs.build-output }}/*.geode
+          name: AFC-${{ matrix.name }}-v2.0.0
+          path: output/*.geode
           if-no-files-found: error

@@ -1,17 +1,19 @@
 {
   "geode": "5.10.1",
   "gd": {
-    "android": "2.2081",
     "win": "2.2081",
+    "android": "2.2081",
     "mac": "2.2081",
     "ios": "2.2081"
   },
-  "version": "v1.0.1",
-  "id": "helloimhukanfr.advanced-frame-counter",
+  "id": "helloimhukanfr.aframecounter",
   "name": "Advanced Frame Counter",
+  "version": "v2.0.0",
   "developer": "helloimhukanfr",
-  "description": "Real frame timing and input analysis.",
-  "repository": "https://github.com/helloimhukanfr/adv-frame-counter11",
+  "description": "Real Geometry Dash frame timing and input analysis.",
+  "links": {
+    "source": "https://github.com/helloimhukanfr/adv-frame-counter11"
+  },
   "tags": [
     "utility",
     "interface",
@@ -81,10 +83,6 @@
       "default": 1.0,
       "min": 0.4,
       "max": 2.5,
-      "control": {
-        "arrows": true,
-        "slider": true
-      },
       "name": "HUD Scale"
     },
     "hud-opacity": {
@@ -92,10 +90,6 @@
       "default": 0.9,
       "min": 0.1,
       "max": 1.0,
-      "control": {
-        "arrows": true,
-        "slider": true
-      },
       "name": "HUD Opacity"
     },
     "label-scale": {
@@ -103,10 +97,6 @@
       "default": 1.0,
       "min": 0.4,
       "max": 2.5,
-      "control": {
-        "arrows": true,
-        "slider": true
-      },
       "name": "Label Scale"
     },
     "label-opacity": {
@@ -114,10 +104,6 @@
       "default": 1.0,
       "min": 0.1,
       "max": 1.0,
-      "control": {
-        "arrows": true,
-        "slider": true
-      },
       "name": "Label Opacity"
     },
     "hud-x": {
