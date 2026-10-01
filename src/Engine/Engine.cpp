@@ -215,12 +215,24 @@ void Engine::tickPost(PlayLayer* pl, int beforeTick, int afterTick, float dt) {
 }
 
 void Engine::input(PlayLayer* pl, bool down, int button, bool p1) {
-    if (WindowProbe::probing() || m_injecting ||
-        !pl || !cfg::enabled())
+    if (WindowProbe::probing() ||
+        m_injecting ||
+        !pl)
+        return;
+
+    auto& rec = InputRecorder::get();
+
+    // Recording is deliberately allowed even if the visual/master switch
+    // is disabled. Otherwise a UI preference can silently produce a
+    // zero-input recording.
+    bool capture = rec.recording();
+
+    if (!cfg::enabled() && !capture)
         return;
 
     if (game::practice(pl) &&
-        !cfg::b("practice-support"))
+        !cfg::b("practice-support") &&
+        !capture)
         return;
 
     InputEvent e =
@@ -231,24 +243,20 @@ void Engine::input(PlayLayer* pl, bool down, int button, bool p1) {
             p1
         );
 
-    auto& rec = InputRecorder::get();
-
     int idx = rec.push(e);
 
-    if (rec.recording()) {
-        // Diagnostic breadcrumbs only for the first few events.
-        // This lets the Android log prove whether an external macro
-        // actually reaches the normal handleButton path.
-        if (g_afcLoggedInputEvents < 12) {
+    if (capture) {
+        static int loggedEvents = 0;
+
+        if (loggedEvents < 20) {
             log::info(
-                "[AFC] captured {} event: tick={} P{} button={} {}",
+                "[AFC] REC {} tick={} P{} button={}",
                 down ? "PRESS" : "RELEASE",
                 e.tick,
                 e.player,
-                e.button,
-                down ? "down" : "up"
+                e.button
             );
-            ++g_afcLoggedInputEvents;
+            ++loggedEvents;
         }
     }
 

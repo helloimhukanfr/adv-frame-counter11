@@ -30,102 +30,119 @@ inline WindowResult solveWindow(
 
     range = std::max(1, std::min(15, range));
 
-    auto run = [&](int d) {
-        ++r.probesRun;
-        return probe(d);
+    std::vector<Probe> outcomes(
+        static_cast<size_t>(range * 2 + 1),
+        Probe::Failed
+    );
+
+    auto indexOf = [range](int offset) {
+        return offset + range;
     };
 
-    // The real recorded click must survive.
-    Probe base = run(0);
+    // ALWAYS test the real click first.
+    outcomes[indexOf(0)] = probe(0);
+    ++r.probesRun;
 
-    if (base == Probe::Failed) {
+    if (outcomes[indexOf(0)] == Probe::Failed) {
         r.validity = Validity::MethodLimitation;
-        r.note = "base probe could not run";
-        r.probesSkipped = 2 * range;
+        r.note = "base probe failed";
+        r.probesSkipped = range * 2;
         return r;
     }
 
-    if (base == Probe::Dies) {
+    if (outcomes[indexOf(0)] == Probe::Dies) {
         r.validity = Validity::MethodLimitation;
-        r.note = "real recorded input did not reproduce in probe";
-        r.probesSkipped = 2 * range;
+        r.note = "recorded click did not reproduce";
+        r.probesSkipped = range * 2;
         return r;
+    }
+
+    // Test EVERY offset, even after one side has already died.
+    // This is more expensive but gives a complete -15..+15 map.
+    for (int d = -range; d <= range; ++d) {
+        if (d == 0)
+            continue;
+
+        outcomes[indexOf(d)] = probe(d);
+        ++r.probesRun;
+
+        if (outcomes[indexOf(d)] == Probe::Failed) {
+            r.validity = Validity::MethodLimitation;
+            r.note =
+                "probe failed at offset " +
+                std::to_string(d);
+            r.probesSkipped =
+                range * 2 + 1 - r.probesRun;
+            return r;
+        }
     }
 
     int lo = 0;
     int hi = 0;
 
-    bool negativeOpen = true;
-    bool positiveOpen = true;
-
-    // Walk outward symmetrically.
-    // This mirrors the way a frame window is actually searched:
-    // test the adjacent frame first, then continue outward until
-    // that side dies.
-    for (int d = 1; d <= range; ++d) {
-
-        if (negativeOpen) {
-            Probe p = run(-d);
-
-            if (p == Probe::Failed) {
-                r.validity = Validity::MethodLimitation;
-                r.note = "negative-side probe failed";
-                return r;
-            }
-
-            if (p == Probe::Dies) {
-                negativeOpen = false;
-            }
-            else {
-                lo = -d;
-            }
-        }
-
-        if (positiveOpen) {
-            Probe p = run(d);
-
-            if (p == Probe::Failed) {
-                r.validity = Validity::MethodLimitation;
-                r.note = "positive-side probe failed";
-                return r;
-            }
-
-            if (p == Probe::Dies) {
-                positiveOpen = false;
-            }
-            else {
-                hi = d;
-            }
-        }
-
-        if (!negativeOpen && !positiveOpen)
+    // Find the first death on the negative side.
+    for (int d = -1; d >= -range; --d) {
+        if (outcomes[indexOf(d)] == Probe::Dies)
             break;
+
+        if (outcomes[indexOf(d)] == Probe::Survives)
+            lo = d;
+    }
+
+    // Find the first death on the positive side.
+    for (int d = 1; d <= range; ++d) {
+        if (outcomes[indexOf(d)] == Probe::Dies)
+            break;
+
+        if (outcomes[indexOf(d)] == Probe::Survives)
+            hi = d;
+    }
+
+    // Detect weird non-contiguous survival. That is useful diagnostic
+    // information instead of silently pretending the window is monotonic.
+    bool nonContiguous = false;
+
+    bool sawNegativeDeath = false;
+    for (int d = -1; d >= -range; --d) {
+        if (outcomes[indexOf(d)] == Probe::Dies)
+            sawNegativeDeath = true;
+        else if (sawNegativeDeath &&
+                 outcomes[indexOf(d)] == Probe::Survives) {
+            nonContiguous = true;
+        }
+    }
+
+    bool sawPositiveDeath = false;
+    for (int d = 1; d <= range; ++d) {
+        if (outcomes[indexOf(d)] == Probe::Dies)
+            sawPositiveDeath = true;
+        else if (sawPositiveDeath &&
+                 outcomes[indexOf(d)] == Probe::Survives) {
+            nonContiguous = true;
+        }
     }
 
     r.earliest = lo;
     r.latest = hi;
-
-    // Number of integer frame positions in the inclusive window.
     r.exact = hi - lo + 1;
 
     r.capped =
-        negativeOpen ||
-        positiveOpen;
+        lo == -range ||
+        hi == range;
 
     r.validity = Validity::Valid;
-
     r.probesSkipped =
-        (2 * range + 1) - r.probesRun;
-
-    if (r.probesSkipped < 0)
-        r.probesSkipped = 0;
+        range * 2 + 1 - r.probesRun;
 
     r.note =
-        "tested integer offsets [" +
-        std::to_string(lo) +
+        "tested all offsets [" +
+        std::to_string(-range) +
         "," +
-        std::to_string(hi) +
+        std::to_string(range) +
         "]";
+
+    if (nonContiguous)
+        r.note += "; non-contiguous survival detected";
 
     return r;
 }

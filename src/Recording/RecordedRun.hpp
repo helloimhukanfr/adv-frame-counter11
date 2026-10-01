@@ -27,7 +27,7 @@ struct RecordedRun {
     int version = kVersion;
     int levelID = 0;
     std::string levelName;
-    int tps = 0;                   // 0 until real physics timing has been observed
+    int tps = 0;                   // 0 = timing not yet measured                   // 0 until real physics timing has been observed
     int durationTicks = 0;
     bool platformer = false;
     std::string timingConvention = "gd-physics-tick:GJBaseGameLayer::m_gameState.m_currentProgress";

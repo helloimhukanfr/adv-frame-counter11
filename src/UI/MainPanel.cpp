@@ -266,52 +266,45 @@ void MainPanel::buildRecord() {
     float W = m_size.width;
     float H = m_size.height;
 
-    label("RECORD RUN", {W / 2, H - 18}, 0.52f);
+    label("RECORDING", {W / 2.f, H - 18.f}, 0.52f);
 
     auto menu = newMenu(m_content);
 
+    // --------------------------------------------------------
+    // Status banner
+    // --------------------------------------------------------
+
     std::string state;
 
-    if (rec.recording()) {
-        state = "REC ARMED - LEAVE PAUSE AND START MACRO";
-    }
-    else if (rec.hasRun()) {
-        state = "RUN READY - " +
-                std::to_string(rec.run().pressCount()) +
-                " PRESSES";
-    }
-    else {
-        state = "IDLE - NO RUN CAPTURED";
-    }
+    if (rec.recording())
+        state = "ARMED  •  LEAVE PAUSE MENU AND START MACRO";
+    else if (rec.hasRun())
+        state =
+            "READY  •  " +
+            std::to_string(rec.run().pressCount()) +
+            " PRESSES CAPTURED";
+    else
+        state = "IDLE  •  NO RECORDING";
 
-    auto stateLabel =
+    auto status =
         label(
             state,
-            {W / 2, H - 42},
-            0.30f
+            {W / 2.f, H - 43.f},
+            0.27f
         );
 
-    stateLabel->setOpacity(220);
+    status->setOpacity(220);
 
     // --------------------------------------------------------
-    // Live metrics
+    // Metrics
     // --------------------------------------------------------
 
-    float cardW = (W - 42.f) / 3.f;
-    float metricY = H - 70.f;
+    float cardW = (W - 48.f) / 3.f;
+    float metricY = H - 73.f;
 
     auto metric = [&](float x, char const* title, std::string value) {
-        label(
-            title,
-            {x, metricY + 10.f},
-            0.23f
-        )->setOpacity(130);
-
-        label(
-            value,
-            {x, metricY - 6.f},
-            0.34f
-        );
+        label(title, {x, metricY + 9.f}, 0.20f)->setOpacity(125);
+        label(value, {x, metricY - 7.f}, 0.32f);
     };
 
     metric(
@@ -321,94 +314,118 @@ void MainPanel::buildRecord() {
     );
 
     metric(
-        12.f + cardW * 1.5f,
+        18.f + cardW * 1.5f,
         "EVENTS",
         std::to_string(rec.run().inputs.size())
     );
 
-    std::string tps =
+    metric(
+        24.f + cardW * 2.5f,
+        "TPS",
         rec.tps() > 0
             ? std::to_string(rec.tps())
-            : "?";
-
-    metric(
-        12.f + cardW * 2.5f,
-        "TPS",
-        tps
+            : "AUTO"
     );
 
     // --------------------------------------------------------
-    // Row 1: recording / analysis / clear
+    // Action grid
     // --------------------------------------------------------
 
-    float bw = (W - 36.f) / 3.f;
-    float row1 = H - 112.f;
+    float bw = (W - 40.f) / 2.f;
+
+    float y1 = H - 115.f;
+    float y2 = H - 151.f;
+    float y3 = H - 187.f;
 
     button(
         menu,
-        rec.recording() ? "STOP RECORDING" : "RECORD",
-        {12.f + bw * 0.5f, row1},
+        rec.recording() ? "CANCEL RECORDING" : "ARM RECORDING",
+        {12.f + bw * 0.5f, y1},
         bw - 6.f,
         [this] {
-            auto& recorder = InputRecorder::get();
+            auto& r = InputRecorder::get();
 
-            if (recorder.recording()) {
+            if (r.recording()) {
                 Engine::get().stopRecording();
-                toast("RECORDING STOPPED");
-                go(Page::Record);
-                return;
+                toast("RECORDING CANCELLED");
+            }
+            else {
+                std::string err;
+
+                if (!Engine::get().startRecording(err))
+                    toast(err);
+                else
+                    toast("RECORD ARMED - START MACRO");
+
             }
 
-            std::string err;
-
-            if (!Engine::get().startRecording(err)) {
-                toast(err);
-                go(Page::Record);
-                return;
-            }
-
-            // The recorder now survives the transition out of the
-            // pause menu. Closing immediately removes UI distractions.
-            toast("RECORD ARMED - START YOUR MACRO");
-            close();
+            go(Page::Record);
         },
         rec.recording(),
-        32.f
+        30.f
     );
 
     button(
         menu,
-        "ANALYZE ALL CLICKS",
-        {12.f + bw * 1.5f, row1},
+        "ANALYZE LAST RUN",
+        {28.f + bw * 1.5f, y1},
         bw - 6.f,
         [this] {
-            auto& recorder = InputRecorder::get();
+            auto& r = InputRecorder::get();
 
-            if (!recorder.hasRun()) {
+            if (!r.hasRun()) {
                 toast("NO COMPLETED RECORDING");
                 return;
             }
 
-            // Recorded Replay is explicitly the analysis method for
-            // this page. It tests every recorded press.
             Engine::get().switchMethod(Method::ReplayProbe);
             cfg::setMethod(Method::ReplayProbe);
 
             std::string err;
 
-            if (!Engine::get().startAnalysis(err))
-                toast(err);
+            if (Engine::get().startAnalysis(err))
+                toast("ANALYSIS STARTED: EVERY CLICK, -15 TO +15");
             else
-                toast("ANALYZING EVERY RECORDED CLICK");
+                toast(err);
         },
         false,
-        32.f
+        30.f
     );
 
     button(
         menu,
-        "CLEAR RUN",
-        {12.f + bw * 2.5f, row1},
+        "SAVE LAST RUN",
+        {12.f + bw * 0.5f, y2},
+        bw - 6.f,
+        [this] {
+            auto& r = InputRecorder::get();
+
+            if (!r.hasRun()) {
+                toast("NO COMPLETED RECORDING");
+                return;
+            }
+
+            std::string name =
+                "afc_" +
+                std::to_string(r.run().levelID) +
+                "_" +
+                std::to_string(r.run().pressCount());
+
+            std::string err;
+
+            if (Engine::get().saveRun(name, err))
+                toast("RUN SAVED");
+            else
+                toast("SAVE FAILED: " + err);
+        },
+        false,
+        30.f
+    );
+
+    button(
+        menu,
+        "CLEAR LAST RUN",
+        {28.f + bw * 1.5f, y2},
         bw - 6.f,
         [this] {
             InputRecorder::get().clearRun();
@@ -416,27 +433,21 @@ void MainPanel::buildRecord() {
             go(Page::Record);
         },
         false,
-        32.f
+        30.f
     );
-
-    // --------------------------------------------------------
-    // Row 2: playback
-    // --------------------------------------------------------
-
-    float row2 = H - 150.f;
 
     button(
         menu,
         "PLAYBACK",
-        {12.f + bw * 0.5f, row2},
+        {12.f + bw * 0.5f, y3},
         bw - 6.f,
         [this] {
             std::string err;
 
-            if (!Engine::get().playbackStart(err))
-                toast(err);
-            else
+            if (Engine::get().playbackStart(err))
                 toast("PLAYBACK ARMED");
+            else
+                toast(err);
         },
         false,
         30.f
@@ -444,20 +455,8 @@ void MainPanel::buildRecord() {
 
     button(
         menu,
-        "PAUSE PB",
-        {12.f + bw * 1.5f, row2},
-        bw - 6.f,
-        [] {
-            Engine::get().playbackPause();
-        },
-        false,
-        30.f
-    );
-
-    button(
-        menu,
-        "STOP PB",
-        {12.f + bw * 2.5f, row2},
+        "STOP PLAYBACK",
+        {28.f + bw * 1.5f, y3},
         bw - 6.f,
         [] {
             Engine::get().playbackStop();
@@ -467,163 +466,59 @@ void MainPanel::buildRecord() {
     );
 
     // --------------------------------------------------------
-    // Stored runs
+    // Saved-run information
     // --------------------------------------------------------
 
-    auto saved = eng.storage().list();
-
-    if (m_savedIdx >= static_cast<int>(saved.size()))
-        m_savedIdx = 0;
-
-    float infoY = 92.f;
+    float infoY = 73.f;
 
     label(
-        "SAVED RUNS",
+        "LAST CAPTURE",
         {16.f, infoY},
-        0.27f,
-        {0, 0.5f}
-    )->setOpacity(140);
+        0.24f,
+        {0.f, 0.5f}
+    )->setOpacity(130);
 
-    if (saved.empty()) {
-
+    if (rec.hasRun()) {
         label(
-            "No saved runs.",
-            {16.f, infoY - 18.f},
-            0.30f,
-            {0, 0.5f}
-        )->setOpacity(120);
-
-    }
-    else {
-        auto const& item =
-            saved[static_cast<size_t>(m_savedIdx)];
-
-        label(
-            std::to_string(m_savedIdx + 1) +
-            "/" +
-            std::to_string(saved.size()) +
-            "   " +
-            std::to_string(item.presses) +
-            " presses   " +
-            std::to_string(item.durationTicks) +
+            std::to_string(rec.run().pressCount()) +
+            " presses  •  " +
+            std::to_string(rec.run().inputs.size()) +
+            " input events  •  " +
+            std::to_string(rec.run().durationTicks) +
             " ticks",
             {16.f, infoY - 18.f},
             0.29f,
-            {0, 0.5f}
-        );
-
-        std::string fn = item.fileName;
-
-        button(
-            menu,
-            "<",
-            {W - 150.f, infoY - 18.f},
-            42.f,
-            [this, n = saved.size()] {
-                m_savedIdx =
-                    (m_savedIdx +
-                     static_cast<int>(n) - 1) %
-                    static_cast<int>(n);
-                go(Page::Record);
-            },
-            false,
-            26.f
-        );
-
-        button(
-            menu,
-            ">",
-            {W - 104.f, infoY - 18.f},
-            42.f,
-            [this, n = saved.size()] {
-                m_savedIdx =
-                    (m_savedIdx + 1) %
-                    static_cast<int>(n);
-                go(Page::Record);
-            },
-            false,
-            26.f
-        );
-
-        button(
-            menu,
-            "LOAD",
-            {W - 54.f, infoY - 18.f},
-            70.f,
-            [this, fn] {
-                RecordedRun r;
-                std::string err;
-
-                if (Engine::get().storage().load(fn, r, err)) {
-                    InputRecorder::get().setRun(std::move(r));
-                    toast("RUN LOADED");
-                }
-                else {
-                    toast("LOAD FAILED: " + err);
-                }
-
-                go(Page::Record);
-            },
-            false,
-            26.f
-        );
-
-        button(
-            menu,
-            "DELETE",
-            {W - 54.f, infoY - 48.f},
-            70.f,
-            [this, fn] {
-                std::string err;
-
-                Engine::get().storage().remove(
-                    fn,
-                    err
-                );
-
-                toast(
-                    err.empty()
-                        ? "RUN DELETED"
-                        : "DELETE FAILED: " + err
-                );
-
-                go(Page::Record);
-            },
-            false,
-            26.f
+            {0.f, 0.5f}
         );
     }
-
-    // --------------------------------------------------------
-    // Analysis state
-    // --------------------------------------------------------
-
-    label(
-        eng.progress().label,
-        {16.f, 50.f},
-        0.28f,
-        {0, 0.5f}
-    )->setOpacity(160);
+    else {
+        label(
+            "Recording is kept until you clear it or start another run.",
+            {16.f, infoY - 18.f},
+            0.25f,
+            {0.f, 0.5f}
+        )->setOpacity(120);
+    }
 
     label(
-        "Every recorded PRESS is tested at offsets -15 ... +15.",
-        {16.f, 34.f},
-        0.27f,
-        {0, 0.5f}
-    )->setOpacity(120);
+        "Each PRESS is re-tested at every integer offset from -15 to +15.",
+        {16.f, 37.f},
+        0.24f,
+        {0.f, 0.5f}
+    )->setOpacity(115);
 
     label(
-        "First death on each side ends that side of the window.",
-        {16.f, 20.f},
-        0.25f,
-        {0, 0.5f}
-    )->setOpacity(110);
+        "The first death on either side defines the contiguous frame window.",
+        {16.f, 22.f},
+        0.23f,
+        {0.f, 0.5f}
+    )->setOpacity(105);
 
     button(
         menu,
         "BACK",
-        {W - 52.f, 18.f},
-        80.f,
+        {W - 45.f, 18.f},
+        72.f,
         [this] {
             go(Page::Main);
         },

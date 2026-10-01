@@ -35,6 +35,8 @@ json::Value RecordedRun::toJson() const {
 }
 
 bool RecordedRun::validate(std::string& err) const {
+    // TPS 0 means the recording was captured before a timing sample was
+    // available. Raw input capture is still valid and must remain usable.
     if (tps < 0 || tps > 100000) {
         err = "invalid tps";
         return false;
@@ -50,7 +52,7 @@ bool RecordedRun::validate(std::string& err) const {
         return false;
     }
 
-    int last = 0;
+    int lastTick = -1;
 
     for (size_t i = 0; i < inputs.size(); ++i) {
         auto const& e = inputs[i];
@@ -60,8 +62,8 @@ bool RecordedRun::validate(std::string& err) const {
             return false;
         }
 
-        if (e.tick < last) {
-            err = "ticks not ordered at input " + std::to_string(i);
+        if (lastTick >= 0 && e.tick < lastTick) {
+            err = "ticks are not ordered at input " + std::to_string(i);
             return false;
         }
 
@@ -75,7 +77,7 @@ bool RecordedRun::validate(std::string& err) const {
             return false;
         }
 
-        last = e.tick;
+        lastTick = e.tick;
     }
 
     if (inputs.back().tick > durationTicks) {

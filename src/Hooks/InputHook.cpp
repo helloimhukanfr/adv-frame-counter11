@@ -9,6 +9,16 @@
 using namespace geode::prelude;
 
 class $modify(AfcBaseGameLayer, GJBaseGameLayer) {
+
+    static void onModify(auto& self) {
+        // Capture macro input before XDBot/other replay hooks get a chance
+        // to alter the call chain.
+        self.setHookPriorityPre(
+            "GJBaseGameLayer::handleButton",
+            Priority::First
+        );
+    }
+
     void handleButton(bool down, int button, bool isPlayer1) {
         PlayLayer* pl = PlayLayer::get();
         if (pl && static_cast<GJBaseGameLayer*>(pl) == this)

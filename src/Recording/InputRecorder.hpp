@@ -43,7 +43,7 @@ public:
         m_valid = true;
         m_recording = false;
         m_waitingForFirstInput = false;
-        m_hasRun = true;
+        m_hasRun = !m_run.inputs.empty();
     }
     void clearRun() { m_run = RecordedRun{}; m_hasRun = false; }
 
