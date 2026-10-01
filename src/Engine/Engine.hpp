@@ -27,6 +27,7 @@ public:
     void attemptStart(PlayLayer* pl);
     void attemptEnd(PlayLayer* pl, bool levelExit);   // death / complete / quit
     void tickPre(PlayLayer* pl, float dt);            // before the game processes a tick
+    void tickPost(PlayLayer* pl, int beforeTick, int afterTick, float dt);
     void input(PlayLayer* pl, bool down, int button, bool p1);
     void paused(PlayLayer* pl);
     void resumed(PlayLayer* pl);

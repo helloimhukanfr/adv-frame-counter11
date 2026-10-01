@@ -2,6 +2,7 @@
 // physics tick (GJBaseGameLayer::processCommands). Both calls always forward to
 // the original, so external macros that reach this path are seen unchanged.
 #include "../Engine/Engine.hpp"
+#include "../Platform/Game.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 
@@ -17,8 +18,20 @@ class $modify(AfcBaseGameLayer, GJBaseGameLayer) {
 
     void processCommands(float dt, bool isHalfTick, bool isLastTick) {
         PlayLayer* pl = PlayLayer::get();
-        if (pl && static_cast<GJBaseGameLayer*>(pl) == this)
+
+        bool track = pl && static_cast<GJBaseGameLayer*>(pl) == this;
+        int beforeTick = -1;
+
+        if (track) {
+            beforeTick = afc::game::tick(pl);
             afc::Engine::get().tickPre(pl, dt);
+        }
+
         GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
+
+        if (track) {
+            int afterTick = afc::game::tick(pl);
+            afc::Engine::get().tickPost(pl, beforeTick, afterTick, dt);
+        }
     }
 };

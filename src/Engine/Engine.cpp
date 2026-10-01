@@ -86,34 +86,81 @@ void Engine::attemptEnd(PlayLayer* pl, bool levelExit) {
 
 void Engine::tickPre(PlayLayer* pl, float dt) {
     if (WindowProbe::probing() || !pl || !cfg::enabled()) return;
+
     m_pl = pl;
     if (game::practice(pl) && !cfg::b("practice-support")) return;
+
     int t = game::tick(pl);
-    // Measure the real physics step: dt of the previous call divided by ticks it advanced.
-    if (m_prevTick >= 0 && t > m_prevTick && m_lastDt > 0.f) {
-        m_stepDt = m_lastDt / static_cast<float>(t - m_prevTick);
-        m_stepKnown = true;
-        InputRecorder::get().setTps(static_cast<int>(std::lround(1.f / m_stepDt)));
-    }
-    m_prevTick = t; m_lastDt = dt; m_tick = t;
+    m_tick = t;
 
     Method m = cfg_method();
     if (m != m_lastMethod) switchMethod(m);
 
     bool compare = cfg::mode() == cfg::Mode::Compare;
-    if ((m == Method::StateProbe || compare) && experimentalAllowed())
-        m_m2.preTick(pl, t, std::min(15, std::max(1, cfg::i("probe-range"))));
 
+    // A processCommands call can occur without advancing the GD tick.
+    // Only take one checkpoint when the tick identity actually changes.
+    if (t != m_prevTick) {
+        m_prevTick = t;
+
+        if ((m == Method::StateProbe || compare) && experimentalAllowed()) {
+            m_m2.preTick(
+                pl,
+                t,
+                std::min(15, std::max(1, cfg::i("probe-range")))
+            );
+        }
+    }
+
+    // Playback input is injected into the normal GD input path.
+    // Engine::input ignores these events while m_injecting is true.
     if (m_pb == PlaybackState::Playing && cfg::b("playback-enabled")) {
         auto const& ev = InputRecorder::get().run().inputs;
+
         m_injecting = true;
+
         while (m_pbIdx < ev.size() && ev[m_pbIdx].tick <= t) {
-            if (ev[m_pbIdx].tick == t) pl->handleButton(ev[m_pbIdx].down, ev[m_pbIdx].button, ev[m_pbIdx].player == 1);
+            if (ev[m_pbIdx].tick == t) {
+                pl->handleButton(
+                    ev[m_pbIdx].down,
+                    ev[m_pbIdx].button,
+                    ev[m_pbIdx].player == 1
+                );
+            }
             ++m_pbIdx;
         }
+
         m_injecting = false;
-        if (m_pbIdx >= ev.size()) m_pb = PlaybackState::Idle;
+
+        if (m_pbIdx >= ev.size())
+            m_pb = PlaybackState::Idle;
     }
+
+    (void)dt;
+}
+
+void Engine::tickPost(PlayLayer* pl, int beforeTick, int afterTick, float dt) {
+    if (WindowProbe::probing() || !pl || !cfg::enabled()) return;
+    if (game::practice(pl) && !cfg::b("practice-support")) return;
+
+    int advanced = afterTick - beforeTick;
+
+    // Measure the dt belonging to this exact processCommands call.
+    // If the call advanced multiple game ticks, calculate the per-tick dt.
+    if (advanced > 0 && dt > 0.f && std::isfinite(dt)) {
+        float perTick = dt / static_cast<float>(advanced);
+
+        if (std::isfinite(perTick) && perTick > 0.f) {
+            m_stepDt = perTick;
+            m_stepKnown = true;
+
+            int tps = static_cast<int>(std::lround(1.f / m_stepDt));
+            if (tps > 0)
+                InputRecorder::get().setTps(tps);
+        }
+    }
+
+    m_tick = afterTick;
 }
 
 void Engine::input(PlayLayer* pl, bool down, int button, bool p1) {
@@ -190,6 +237,10 @@ bool Engine::startAnalysis(std::string& err) {
         return true;
     }
     if (!experimentalAllowed()) { err = "enable 'Allow experimental probing' first"; return false; }
+    if ((m == Method::StateProbe || m == Method::ReplayProbe) && !m_stepKnown) {
+        err = "real physics timing has not been measured yet; resume the level briefly, then pause";
+        return false;
+    }
     if (m == Method::StateProbe) return m_m2.beginBatch(m_pl, m_tick, horizon, err);
     if (!rec.hasRun()) { err = "no recorded run (RECORD, play, STOP first)"; return false; }
     return m_m3.begin(m_pl, rec.run(), err);
@@ -208,8 +259,8 @@ void Engine::pumpAnalysis() {
     double budget = std::max(1.f, cfg::f("analysis-budget-ms"));
     int range = std::min(15, std::max(1, cfg::i("probe-range")));
     int horizon = std::max(5, cfg::i("probe-horizon"));
-    if (m_m2.batchActive()) m_m2.stepBatch(m_pl, budget, range, horizon, m_stepDt * 1.001f);
-    else if (m_m3.active()) m_m3.step(m_pl, budget, range, horizon, m_stepDt * 1.001f);
+    if (m_m2.batchActive()) m_m2.stepBatch(m_pl, budget, range, horizon, m_stepDt);
+    else if (m_m3.active()) m_m3.step(m_pl, budget, range, horizon, m_stepDt);
     m_pumping = false;
 }
 
